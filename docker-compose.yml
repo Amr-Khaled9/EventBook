@@ -1,0 +1,97 @@
+version: "3.9"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: eventbook_app
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - ./:/var/www
+    networks:
+      - eventbook_net
+    depends_on:
+      - mysql
+      - redis
+
+  nginx:
+    image: nginx:stable-alpine
+    container_name: eventbook_nginx
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    volumes:
+      - ./:/var/www
+      - ./nginx:/etc/nginx/conf.d
+    networks:
+      - eventbook_net
+    depends_on:
+      - app
+
+  mysql:
+    image: mysql:8.0
+    container_name: eventbook_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: eventbook
+      MYSQL_USER: eventbook
+      MYSQL_PASSWORD: secret
+      MYSQL_ROOT_PASSWORD: root_secret
+    ports:
+      - "3306:3306"
+    volumes:
+      - eventbook_mysql_data:/var/lib/mysql
+    networks:
+      - eventbook_net
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: eventbook_phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: mysql
+      PMA_USER: root
+      PMA_PASSWORD: root_secret
+    ports:
+      - "8080:80"
+    networks:
+      - eventbook_net
+    depends_on:
+      - mysql
+
+  redis:
+    image: redis:alpine
+    container_name: eventbook_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - eventbook_net
+
+  # Queue worker — processes jobs dispatched to the Redis queue in the background
+  queue:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: eventbook_queue
+    restart: unless-stopped
+    working_dir: /var/www
+    command: php artisan queue:work redis --tries=3 --sleep=3
+    volumes:
+      - ./:/var/www
+    networks:
+      - eventbook_net
+    depends_on:
+      - app
+      - redis
+      - mysql
+
+networks:
+  eventbook_net:
+    driver: bridge
+
+volumes:
+  eventbook_mysql_data:
+    driver: local
