@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\TrainController;
+use App\Http\Controllers\Api\TripController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -19,4 +21,10 @@ Route::prefix('auth')->group(function () {
 
 Route::middleware('auth:api')->group(function () {
     Route::post('auth/logout', [AuthController::class, 'logout']);
+
+    Route::get('trains', [TrainController::class, 'index']);
+    Route::get('trains/{id}', [TrainController::class, 'show']);
+
+    Route::get('trips', [TripController::class, 'index']);
+    Route::get('trips/{id}', [TripController::class, 'show']);
 });
