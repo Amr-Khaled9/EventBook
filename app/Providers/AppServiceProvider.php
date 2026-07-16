@@ -13,6 +13,12 @@ use App\Repositories\TrainRepository;
 use App\Repositories\TripRepository;
 use App\Repositories\UserRepository;
 use Illuminate\Support\ServiceProvider;
+use App\Events\BookingCreated;
+use App\Listeners\LogBookingActivity;
+use App\Listeners\SendBookingConfirmationMail;
+use App\Repositories\BookingRepository;
+use App\Repositories\Contracts\BookingRepositoryInterface;
+use Illuminate\Support\Facades\Event;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -26,13 +32,17 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(PasswordResetRepositoryInterface::class, PasswordResetRepository::class);
         $this->app->bind(TrainRepositoryInterface::class, TrainRepository::class);
         $this->app->bind(TripRepositoryInterface::class, TripRepository::class);
+        $this->app->bind(BookingRepositoryInterface::class, BookingRepository::class);
     }
 
-    /**
-     * Bootstrap any application services.
-     */
     public function boot(): void
     {
-        //
+        Event::listen(
+            BookingCreated::class,
+            [
+                SendBookingConfirmationMail::class,
+                LogBookingActivity::class,
+            ]
+        );
     }
 }
