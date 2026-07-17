@@ -18,6 +18,8 @@ use App\Listeners\LogBookingActivity;
 use App\Listeners\SendBookingConfirmationMail;
 use App\Repositories\BookingRepository;
 use App\Repositories\Contracts\BookingRepositoryInterface;
+use App\Repositories\Contracts\PaymentRepositoryInterface;
+use App\Repositories\PaymentRepository;
 use Illuminate\Support\Facades\Event;
 
 class AppServiceProvider extends ServiceProvider
@@ -33,6 +35,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(TrainRepositoryInterface::class, TrainRepository::class);
         $this->app->bind(TripRepositoryInterface::class, TripRepository::class);
         $this->app->bind(BookingRepositoryInterface::class, BookingRepository::class);
+        $this->app->bind(PaymentRepositoryInterface::class, PaymentRepository::class);
+
     }
 
     public function boot(): void
