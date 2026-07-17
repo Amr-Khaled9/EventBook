@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BookingController;
+use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\TrainController;
 use App\Http\Controllers\Api\TripController;
 use Illuminate\Http\Request;
@@ -30,4 +31,8 @@ Route::middleware('auth:api')->group(function () {
     Route::get('trips/{id}', [TripController::class, 'show']);
 
     Route::post('bookings', [BookingController::class, 'store']);
+
+    Route::post('payments/initiate', [PaymentController::class, 'initiate']);
 });
+Route::post('payments/callback', [PaymentController::class, 'callback']);
+Route::get('payments/response', [PaymentController::class, 'response']);
