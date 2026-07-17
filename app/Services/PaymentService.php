@@ -1,0 +1,159 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Booking;
+use App\Models\Payment;
+use App\Repositories\Contracts\PaymentRepositoryInterface;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
+
+class PaymentService
+{
+    protected string $baseUrl;
+    protected string $secretKey;
+    protected string $integrationId;
+
+    public function __construct(
+        protected PaymentRepositoryInterface $paymentRepository
+    ) {
+        $this->baseUrl = config('services.paymob.base_url');
+        $this->secretKey = config('services.paymob.secret_key');
+        $this->integrationId = config('services.paymob.integration_id');
+    }
+
+    public function initiatePayment(Booking $booking, string $mobileNumber): array
+    {
+        // 1. Authentication
+        $authToken = $this->authenticate();
+
+        // 2. Order Registration
+        $orderId = $this->registerOrder($authToken, $booking);
+
+        // 3. Payment Key Request
+        $paymentKey = $this->requestPaymentKey($authToken, $orderId, $booking);
+
+        // 4. Save Payment record locally (pending)
+        $payment = $this->paymentRepository->create([
+            'booking_id' => $booking->id,
+            'provider' => 'paymob',
+            'provider_reference' => (string) $orderId,
+            'amount' => $this->calculateAmount($booking),
+            'status' => 'pending',
+        ]);
+
+        // 5. Pay with wallet
+        $result = $this->payWithWallet($paymentKey, $mobileNumber);
+
+        return [
+            'payment' => $payment,
+            'redirect_url' => $result['redirect_url'] ?? null,
+        ];
+    }
+
+    protected function authenticate(): string
+    {
+        $response = Http::post("{$this->baseUrl}/auth/tokens", [
+            'api_key' => $this->secretKey,
+        ]);
+
+        if (! $response->successful()) {
+            Log::error('Paymob auth failed', ['response' => $response->body()]);
+            throw ValidationException::withMessages([
+                'payment' => ['Failed to authenticate with payment provider.'],
+            ]);
+        }
+
+        return $response->json('token');
+    }
+
+    protected function registerOrder(string $authToken, Booking $booking): int
+    {
+        $response = Http::post("{$this->baseUrl}/ecommerce/orders", [
+            'auth_token' => $authToken,
+            'delivery_needed' => false,
+            'amount_cents' => $this->calculateAmount($booking) * 100,
+            'currency' => 'EGP',
+            'merchant_order_id' => 'booking_' . $booking->id . '_' . time(),
+            'items' => [],
+        ]);
+
+        if (! $response->successful()) {
+            Log::error('Paymob order registration failed', ['response' => $response->body()]);
+            throw ValidationException::withMessages([
+                'payment' => ['Failed to register order with payment provider.'],
+            ]);
+        }
+
+        return $response->json('id');
+    }
+
+    protected function requestPaymentKey(string $authToken, int $orderId, Booking $booking): string
+    {
+        $user = $booking->user;
+
+        $response = Http::post("{$this->baseUrl}/acceptance/payment_keys", [
+            'auth_token' => $authToken,
+            'amount_cents' => $this->calculateAmount($booking) * 100,
+            'expiration' => 3600,
+            'order_id' => $orderId,
+            'billing_data' => [
+                'apartment' => 'NA',
+                'email' => $user->email,
+                'floor' => 'NA',
+                'first_name' => $user->name,
+                'street' => 'NA',
+                'building' => 'NA',
+                'phone_number' => '+201000000000',
+                'shipping_method' => 'NA',
+                'postal_code' => 'NA',
+                'city' => 'NA',
+                'country' => 'NA',
+                'last_name' => 'NA',
+                'state' => 'NA',
+            ],
+            'currency' => 'EGP',
+            'integration_id' => $this->integrationId,
+        ]);
+
+        if (! $response->successful()) {
+            Log::error('Paymob payment key request failed', ['response' => $response->body()]);
+            throw ValidationException::withMessages([
+                'payment' => ['Failed to generate payment key.'],
+            ]);
+        }
+
+        return $response->json('token');
+    }
+
+    protected function payWithWallet(string $paymentKey, string $mobileNumber): array
+    {
+        $response = Http::post("{$this->baseUrl}/acceptance/payments/pay", [
+            'source' => [
+                'identifier' => $mobileNumber,
+                'subtype' => 'WALLET',
+            ],
+            'payment_token' => $paymentKey,
+        ]);
+
+        if (! $response->successful()) {
+            Log::error('Paymob wallet payment failed', ['response' => $response->body()]);
+            throw ValidationException::withMessages([
+                'payment' => ['Failed to initiate wallet payment.'],
+            ]);
+        }
+
+        Log::info("Paymob Wallet Response: ", $response->json());
+        return [
+            'redirect_url' => $response->json('redirect_url') ?? $response->json('iframe_redirection_url') ?? $response->json('redirection_url'),
+        ];
+    }
+
+    protected function calculateAmount(Booking $booking): float
+    {
+        $pricePerSeat = 150;
+
+        return $booking->seats_count * $pricePerSeat;
+    }
+}
