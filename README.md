@@ -104,3 +104,6 @@ app/
 ├── Listeners/                # Queued side-effect handlers
 └── Mail/                    # Mailable classes
 ```
+## 🎥 Project Demo
+
+[▶️ EventBook Demo Video](https://drive.google.com/file/d/15OK7xVtlRdl-ES8tt6T_OEGpAkKB6004/view?usp=sharing)
