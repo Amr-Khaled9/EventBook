@@ -1,59 +1,104 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# EventBook — Event-Driven Train Booking System
+ 
+EventBook is a Laravel-based backend API for booking train seats between Egyptian cities. It's built as a portfolio project to demonstrate a clean, layered architecture combined with an **event-driven design** — the core mechanism used to decouple side effects (notifications, activity logging, seat availability updates) from the main booking flow.
+ 
+## Architecture
+ 
+![Architecture Diagram](docs/architecture.png)
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+![ERD](docs/ERD_Event_Book.png)
 
-## About Laravel
-
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
-
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
-
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
-
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
-
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-## Laravel Sponsors
-
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
-
-### Premium Partners
-
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
-
-## Contributing
-
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
-
-## Code of Conduct
-
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+The project follows a strict layered architecture on every module:
+ 
+```
+Request (validation) → Controller (thin) → Service (business logic) → Repository (data access)
+```
+ 
+Business-critical events (booking creation, cancellation) fire domain **Events**, which are picked up by multiple independent, queued **Listeners** — each handling a single responsibility (sending a confirmation email, logging the activity). This keeps the core booking flow fast and decoupled from side effects.
+ 
+## Key Features
+ 
+- **JWT Authentication** — register, login, logout, and OTP-based password reset (email delivered via Mailtrap)
+- **Trains & Trips** — searchable trips with optional filters (date, from/to station)
+- **Event-driven Booking** — booking creation triggers a `BookingCreated` event handled asynchronously by queued listeners (email confirmation, activity logging)
+- **Race-condition-safe seat reservation** — uses `lockForUpdate()` inside a database transaction to prevent double-booking when multiple users book the same trip simultaneously
+- **Payment integration (Paymob)** — mobile wallet payment flow (Vodafone Cash) with HMAC-verified webhook callbacks
+- **Activity logging** — tracks user actions (register, login, bookings, payments) including failed attempts
+- **Dockerized environment** — PHP 8.3, Nginx, MySQL, Redis (queue driver), phpMyAdmin, and a dedicated queue worker container
+## Tech Stack
+ 
+| Layer | Technology |
+|---|---|
+| Framework | Laravel 12 |
+| Language | PHP 8.3 |
+| Database | MySQL 8 |
+| Queue / Cache | Redis |
+| Auth | JWT (tymon/jwt-auth) |
+| Mail (dev) | Mailtrap |
+| Payments | Paymob (Mobile Wallet) |
+| Containerization | Docker & Docker Compose |
+ 
+## Getting Started
+ 
+### Prerequisites
+- Docker & Docker Compose
+- Composer & PHP (for initial `composer create-project`, if starting fresh)
+### Setup
+ 
+```bash
+# 1. Clone the repository
+git clone https://github.com/Amr-Khaled9/EventBook.git
+cd EventBook
+ 
+# 2. Copy environment file and configure it
+cp .env.example .env
+# Fill in DB, Redis, Mailtrap, and Paymob credentials
+ 
+# 3. Build and start containers
+docker compose up -d --build
+ 
+# 4. Install dependencies (if not already vendored)
+docker compose exec app composer install
+ 
+# 5. Generate app key
+docker compose exec app php artisan key:generate
+ 
+# 6. Generate JWT secret
+docker compose exec app php artisan jwt:secret
+ 
+# 7. Run migrations and seed sample data
+docker compose exec app php artisan migrate --seed
+```
+ 
+The app will be available at `http://localhost:8000`, and phpMyAdmin at `http://localhost:8080`.
+ 
+> **Note:** The `queue` container must be running for event listeners (emails, activity logs) to actually process — this happens automatically with `docker compose up -d`.
+ 
+## API Testing
+ 
+A ready-to-import Postman collection is included under [`docs/postman/`](docs/postman):
+ 
+1. Open Postman → **Import**
+2. Select `docs/postman/EventBook.postman_collection.json`
+3. Start with the **Register** or **Login** request — the returned token is used automatically in subsequent requests
+## Running Tests
+ 
+```bash
+docker compose exec app php artisan test
+```
+ 
+Test coverage includes the full booking flow, authentication, and critical edge cases such as double-booking prevention under concurrent requests.
+ 
+## Project Structure Highlights
+ 
+```
+app/
+├── Http/
+│   ├── Controllers/Api/     # Thin controllers, no business logic
+│   └── Requests/            # Form validation per module
+├── Services/                # Business logic layer
+├── Repositories/            # Data access layer (with Contracts/interfaces)
+├── Events/                  # Domain events (e.g. BookingCreated)
+├── Listeners/                # Queued side-effect handlers
+└── Mail/                    # Mailable classes
+```
