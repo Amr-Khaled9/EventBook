@@ -6,6 +6,8 @@ EventBook is a Laravel-based backend API for booking train seats between Egyptia
  
 ![Architecture Diagram](docs/architecture.png)
 
+## Database Design
+
 ![ERD](docs/ERD_Event_Book.png)
 
 The project follows a strict layered architecture on every module:
