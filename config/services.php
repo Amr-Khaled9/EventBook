@@ -40,5 +40,5 @@ return [
         'integration_id' => env('PAYMOB_INTEGRATION_ID'),
         'base_url' => env('PAYMOB_BASE_URL', 'https://accept.paymob.com/api'),
     ],
-
+    'payment_provider' => env('PAYMENT_PROVIDER', 'paymob'), // 'paymob' or 'mock'
 ];

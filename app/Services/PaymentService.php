@@ -25,6 +25,10 @@ class PaymentService
 
     public function initiatePayment(Booking $booking, string $mobileNumber): array
     {
+        if (config('services.payment_provider') === 'mock') {
+            return $this->initiatePaymentMock($booking);
+        }
+
         // 1. Authentication
         $authToken = $this->authenticate();
 
@@ -49,6 +53,44 @@ class PaymentService
         return [
             'payment' => $payment,
             'redirect_url' => $result['redirect_url'] ?? null,
+        ];
+    }
+
+    /**
+     * Same shape of response as the real flow, but with no HTTP calls.
+     * Lets you test the whole booking/payment lifecycle (webhook, idempotency,
+     * retries...) without touching Paymob at all.
+     *
+     * Pass a scenario via the PAYMENT_MOCK_SCENARIO env var, or it'll be random:
+     * 'success' | 'failed' | 'timeout' | 'duplicate'
+     */
+    protected function initiatePaymentMock(Booking $booking): array
+    {
+        $scenario = config('services.payment_mock_scenario')
+            ?? collect(['success', 'failed', 'timeout'])->random();
+
+        if ($scenario === 'timeout') {
+            Log::error('Mock payment provider timeout', ['booking_id' => $booking->id]);
+            throw ValidationException::withMessages([
+                'payment' => ['Payment provider timed out (simulated).'],
+            ]);
+        }
+
+        $orderId = 'mock_' . \Illuminate\Support\Str::uuid();
+
+        $payment = $this->paymentRepository->create([
+            'booking_id' => $booking->id,
+            'provider' => 'mock',
+            'provider_reference' => $orderId,
+            'amount' => $this->calculateAmount($booking),
+            'status' => 'pending',
+        ]);
+
+        return [
+            'payment' => $payment,
+            'redirect_url' => null,
+            // exposed only so you can trigger the matching webhook manually in tests/Postman
+            'mock_scenario' => $scenario,
         ];
     }
 

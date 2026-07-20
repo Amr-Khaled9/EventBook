@@ -33,6 +33,8 @@ Route::middleware('auth:api')->group(function () {
     Route::post('bookings', [BookingController::class, 'store']);
 
     Route::post('payments/initiate', [PaymentController::class, 'initiate']);
+
+    Route::post('payments/callback', [PaymentController::class, 'callback']);
+    Route::post('payments/mock-callback', [PaymentController::class, 'mockCallback']);
+    Route::get('payments/response', [PaymentController::class, 'response']);
 });
-Route::post('payments/callback', [PaymentController::class, 'callback']);
-Route::get('payments/response', [PaymentController::class, 'response']);

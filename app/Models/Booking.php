@@ -16,6 +16,8 @@ class Booking extends Model
         'trip_id',
         'seats_count',
         'status',
+        'confirmation_email_sent_at',
+        'reservation_expires_at',
     ];
 
     public function user(): BelongsTo

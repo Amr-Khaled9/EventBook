@@ -16,8 +16,10 @@ return new class extends Migration
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->foreignId('trip_id')->constrained()->cascadeOnDelete();
             $table->unsignedInteger('seats_count')->default(1);
-            $table->enum('status', ['pending', 'confirmed', 'cancelled', 'completed'])
+            $table->enum('status', ['pending', 'confirmed', 'cancelled', 'completed', 'expired'])
                 ->default('pending');
+            $table->timestamp('confirmation_email_sent_at')->nullable();
+            $table->timestamp('reservation_expires_at')->nullable();
             $table->timestamps();
         });
     }

@@ -41,7 +41,9 @@ class BookingService
                     'user_id' => Auth::id(),
                     'trip_id' => $trip->id,
                     'seats_count' => $data['seats_count'],
-                    'status' => 'confirmed',
+                    'status' => 'pending',
+                    'confirmation_email_sent_at' => null,
+                    'reservation_expires_at' => now()->addMinutes(15),
                 ]);
 
                 event(new BookingCreated($booking));

@@ -54,17 +54,45 @@ class PaymentController extends Controller
         $orderId = $payload['obj']['order']['id'] ?? null;
         $success = $payload['obj']['success'] ?? false;
 
-        $payment = $this->paymentRepository->findByReference((string) $orderId);
+        return $this->processPaymentWebhook((string) $orderId, $success);
+    }
 
-        if ($payment) {
-            $this->paymentRepository->updateStatus(
-                $payment,
-                $success ? 'paid' : 'failed'
-            );
+    // Simulates the provider calling us back — only usable when payment_provider = mock.
+    // Lets you manually reproduce "duplicate webhook", "late confirmation", etc.
+    public function mockCallback(Request $request): JsonResponse
+    {
+        if (config('services.payment_provider') !== 'mock') {
+            return $this->error('Mock callback is disabled outside mock mode', 403);
+        }
 
-            if ($success) {
-                $payment->booking->update(['status' => 'confirmed']);
-            }
+        $orderId = $request->input('provider_reference');
+        $success = $request->boolean('success');
+
+        return $this->processPaymentWebhook($orderId, $success);
+    }
+
+    private function processPaymentWebhook(string $orderId, bool $success): JsonResponse
+    {
+        $payment = $this->paymentRepository->findByReference($orderId);
+
+        if (! $payment) {
+            return $this->error('Payment not found', 404);
+        }
+
+        // Idempotency guard: if this payment already reached a final state,
+        // a duplicate/late webhook must not re-process it (e.g. re-confirm
+        // a booking or re-trigger anything tied to the status change).
+        if (in_array($payment->status, ['paid', 'failed'])) {
+            return $this->success(null, 'Webhook already processed, ignored');
+        }
+
+        $this->paymentRepository->updateStatus(
+            $payment,
+            $success ? 'paid' : 'failed'
+        );
+
+        if ($success) {
+            $payment->booking->update(['status' => 'confirmed']);
         }
 
         return $this->success(null, 'Webhook processed');
