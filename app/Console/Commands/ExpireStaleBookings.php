@@ -24,16 +24,15 @@ class ExpireStaleBookings extends Command
                     ->lockForUpdate()
                     ->first();
 
-                // تأكيد إضافي بعد القفل - المستخدم ممكن يكون دفع فعلاً
-                // في اللحظة اللي بين الـ query الأول والقفل
                 if ($fresh->status !== 'pending') {
                     return;
                 }
-
+                if ($fresh->payment !== null) {
+                    return;
+                }
                 $stateMachine->transitionTo($fresh, 'expired');
 
-                // هنا كمان تقدر ترجع المقاعد لـ "متاحة" تاني
-                // $fresh->trip->seats()->increment('available_count', $fresh->seats_count);
+                $fresh->trip->increment('available_seats', $fresh->seats_count);
             });
         }
 

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Booking;
 use App\Models\Payment;
 use App\Repositories\Contracts\PaymentRepositoryInterface;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
@@ -25,8 +26,31 @@ class PaymentService
 
     public function initiatePayment(Booking $booking, string $mobileNumber): array
     {
+        // 🔑 نقفل صف الحجز، نتأكد إنه لسه pending، وننشئ سجل الـ Payment
+        // كل ده جوه نفس القفل - عشان لو الـ Cron حاول ياخد نفس القفل بعدنا،
+        // هيلاقي فعلياً Payment موجود ويمتنع عن الإلغاء (راجع ExpireStaleBookings)
+        $payment = DB::transaction(function () use ($booking) {
+            $fresh = Booking::where('id', $booking->id)->lockForUpdate()->first();
+
+            if ($fresh->status !== 'pending') {
+                throw ValidationException::withMessages([
+                    'booking' => ["Cannot initiate payment for a booking with status [{$fresh->status}]."],
+                ]);
+            }
+
+            $provider = config('services.payment_provider') === 'mock' ? 'mock' : 'paymob';
+
+            return $this->paymentRepository->create([
+                'booking_id' => $fresh->id,
+                'provider' => $provider,
+                'provider_reference' => 'pending_' . \Illuminate\Support\Str::uuid(), // placeholder، يتحدث تحت
+                'amount' => $this->calculateAmount($fresh),
+                'status' => 'pending',
+            ]);
+        });
+
         if (config('services.payment_provider') === 'mock') {
-            return $this->initiatePaymentMock($booking);
+            return $this->initiatePaymentMock($booking, $payment);
         }
 
         // 1. Authentication
@@ -38,20 +62,14 @@ class PaymentService
         // 3. Payment Key Request
         $paymentKey = $this->requestPaymentKey($authToken, $orderId, $booking);
 
-        // 4. Save Payment record locally (pending)
-        $payment = $this->paymentRepository->create([
-            'booking_id' => $booking->id,
-            'provider' => 'paymob',
-            'provider_reference' => (string) $orderId,
-            'amount' => $this->calculateAmount($booking),
-            'status' => 'pending',
-        ]);
+        // 4. Update the Payment record (created earlier, under the lock) with the real order id
+        $payment->update(['provider_reference' => (string) $orderId]);
 
         // 5. Pay with wallet
         $result = $this->payWithWallet($paymentKey, $mobileNumber);
 
         return [
-            'payment' => $payment,
+            'payment' => $payment->fresh(),
             'redirect_url' => $result['redirect_url'] ?? null,
         ];
     }
@@ -64,7 +82,7 @@ class PaymentService
      * Pass a scenario via the PAYMENT_MOCK_SCENARIO env var, or it'll be random:
      * 'success' | 'failed' | 'timeout' | 'duplicate'
      */
-    protected function initiatePaymentMock(Booking $booking): array
+    protected function initiatePaymentMock(Booking $booking, Payment $payment): array
     {
         $scenario = config('services.payment_mock_scenario')
             ?? collect(['success', 'failed', 'timeout'])->random();
@@ -78,16 +96,10 @@ class PaymentService
 
         $orderId = 'mock_' . \Illuminate\Support\Str::uuid();
 
-        $payment = $this->paymentRepository->create([
-            'booking_id' => $booking->id,
-            'provider' => 'mock',
-            'provider_reference' => $orderId,
-            'amount' => $this->calculateAmount($booking),
-            'status' => 'pending',
-        ]);
+        $payment->update(['provider_reference' => $orderId]);
 
         return [
-            'payment' => $payment,
+            'payment' => $payment->fresh(),
             'redirect_url' => null,
             // exposed only so you can trigger the matching webhook manually in tests/Postman
             'mock_scenario' => $scenario,
