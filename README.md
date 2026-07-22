@@ -26,7 +26,27 @@ Business-critical events (booking creation, cancellation) fire domain **Events**
 - **Race-condition-safe seat reservation** — uses `lockForUpdate()` inside a database transaction to prevent double-booking when multiple users book the same trip simultaneously
 - **Payment integration (Paymob)** — mobile wallet payment flow (Vodafone Cash) with HMAC-verified webhook callbacks
 - **Activity logging** — tracks user actions (register, login, bookings, payments) including failed attempts
+- **Booking State Machine** — enforces valid status transitions (`pending → confirmed/cancelled/expired`), rejecting illegal transitions like `cancelled → confirmed`
+- **Idempotent payment webhooks** — duplicate or retried payment callbacks are safely ignored once a payment reaches a final state, preventing double-processing
+- **Retry-safe queued jobs** — confirmation emails are guarded against duplicate sending if a queued job is retried after a transient failure
+- **Mock Payment Provider** — a switchable mock provider (`PAYMENT_PROVIDER=mock`) simulates success/failure/timeout scenarios for deterministic testing, without touching the real Paymob integration
+- **Auto-expiring reservations** — a scheduled command (`bookings:expire-stale`) releases seats and expires unpaid bookings after a configurable reservation window, safely handling race conditions with in-flight payments
 - **Dockerized environment** — PHP 8.3, Nginx, MySQL, Redis (queue driver), phpMyAdmin, and a dedicated queue worker container
+
+
+## Handling Real-World Failure Scenarios
+
+This project was built with concurrency and failure scenarios as first-class concerns, not afterthoughts:
+
+| Scenario | How it's handled |
+|---|---|
+| Two users book the same last seat | `lockForUpdate()` inside a DB transaction |
+| Duplicate payment webhook | Idempotency check on payment status before processing |
+| Queued email job retried after failure | Guard column (`confirmation_email_sent_at`) prevents re-sending |
+| User pays exactly as reservation expires | Both the payment flow and the expiry cron acquire a row-level lock and re-check state before acting |
+| Invalid status transition attempted | `BookingStateMachine` throws `InvalidStateTransitionException` |
+
+
 ## Tech Stack
  
 | Layer | Technology |
@@ -39,7 +59,8 @@ Business-critical events (booking creation, cancellation) fire domain **Events**
 | Mail (dev) | Mailtrap |
 | Payments | Paymob (Mobile Wallet) |
 | Containerization | Docker & Docker Compose |
- 
+| Scheduling | Laravel Task Scheduling (`bookings:expire-stale`) |
+ > **Note:** For scheduled tasks (auto-expiring reservations) to run, ensure the scheduler is active — either via `docker compose exec app php artisan schedule:work` in a dedicated container, or a system cron entry.
 ## Getting Started
  
 ### Prerequisites
@@ -88,9 +109,7 @@ A Postman collection is available at `docs/postman/EventBook.postman_collection.
 ```bash
 docker compose exec app php artisan test
 ```
- 
-Test coverage includes the full booking flow, authentication, and critical edge cases such as double-booking prevention under concurrent requests.
- 
+Test coverage includes the full booking flow, authentication, concurrent double-booking prevention, idempotent webhook processing, and state machine transition validation.
 ## Project Structure Highlights
  
 ```
