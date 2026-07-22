@@ -77,8 +77,8 @@ The app will be available at `http://localhost:8000`, and phpMyAdmin at `http://
 > **Note:** The `queue` container must be running for event listeners (emails, activity logs) to actually process — this happens automatically with `docker compose up -d`.
  
 ## API Testing
- 
-A ready-to-import Postman collection is included under [`docs/postman/`](docs/postman):
+
+A Postman collection is available at `docs/postman/EventBook.postman_collection.json` — import it to test all endpoints directly.
  
 1. Open Postman → **Import**
 2. Select `docs/postman/EventBook.postman_collection.json`
